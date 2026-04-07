@@ -1,0 +1,8 @@
+vendor/
+*.zip
+*.pyc
+__pycache__/
+.DS_Store
+Pipfile.lock
+check_env.py
+check_cache.py
