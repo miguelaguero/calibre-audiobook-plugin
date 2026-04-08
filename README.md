@@ -5,6 +5,17 @@ A Calibre plugin that generates high-quality audiobooks (MP3) from your ebooks u
 ![License](https://img.shields.io/badge/license-GPL-blue.svg)
 ![Calibre](https://img.shields.io/badge/Calibre-5.0+-green.svg)
 
+## Screenshots
+
+### Main Toolbar
+![Toolbar](screenshots/toolbar.png)
+
+### Cassette Emblem on Library Covers
+![Emblem](screenshots/emblem.png)
+
+### Configuration Settings
+![Configuration](screenshots/config.png)
+
 ## Features
 
 - **Multiple TTS Engines**: 
