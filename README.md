@@ -52,7 +52,7 @@ git clone https://github.com/yourusername/calibre-audiobook.git
 cd calibre-audiobook
 
 # Install dependencies into the vendor folder (requires pip)
-pip install -r requirements.txt -t vendor
+pip install -r PipFile -t vendor
 
 # Install into Calibre
 calibre-customize -b .
