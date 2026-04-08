@@ -31,7 +31,6 @@ class InterfacePlugin(InterfaceAction):
         global _plugin_instance
         _plugin_instance = self
         
-        # Link this instance to the base plugin object for config communication
         if hasattr(self, 'interface_action_base_plugin'):
             self.interface_action_base_plugin.actual_plugin_object = self
         
@@ -52,12 +51,9 @@ class InterfacePlugin(InterfaceAction):
         self.qaction.setMenu(self.menu)
 
     def do_config(self):
-        # Open Calibre's customization dialog for this plugin
-        # Using the correct attribute name 'interface_action_base_plugin'
         if hasattr(self, 'interface_action_base_plugin'):
             self.interface_action_base_plugin.do_user_config(self.gui)
         else:
-            # Fallback if the attribute is missing for some reason
             self.gui.iactions['Preferences'].do_config('plugins', self.name)
 
     def show_dialog(self):
@@ -201,16 +197,78 @@ class InterfacePlugin(InterfaceAction):
         if hasattr(self.gui, 'cover_view'):
             self.gui.cover_view.refresh_ids([book_id])
 
-    def sync_all_icons(self):
+    def remove_emblem_from_book(self, book_id):
+        """Attempts to restore original cover from ebook file if audio is missing."""
         db = self.gui.current_db.new_api
-        ids = db.all_book_ids()
-        count = 0
-        for book_id in ids:
-            formats = db.formats(book_id)
+        formats = db.formats(book_id)
+        if 'MP3' in formats or 'M4B' in formats:
+            return
+
+        from calibre.ebooks.metadata.meta import get_metadata
+        for fmt in formats:
+            path = db.format_abspath(book_id, fmt)
+            if path and os.path.exists(path):
+                try:
+                    with open(path, 'rb') as f:
+                        mi = get_metadata(f, stream_type=fmt.lower())
+                    cover_data = None
+                    if mi.cover_data and mi.cover_data[1]:
+                        cover_data = mi.cover_data[1]
+                    elif mi.cover and os.path.exists(mi.cover):
+                        with open(mi.cover, 'rb') as cf:
+                            cover_data = cf.read()
+                    if cover_data:
+                        db.set_cover({book_id: cover_data})
+                        self.gui.library_view.model().refresh_ids([book_id])
+                        return
+                except: continue
+
+    def sync_all_icons(self):
+        """Runs library sync in a background thread to prevent UI freeze."""
+        # Using a ThreadedJob for the sync as well
+        def sync_worker(db, book_ids, notifications, abort, log):
+            add_count = 0
+            rem_count = 0
+            total = len(book_ids)
+            for i, bid in enumerate(book_ids):
+                if abort.is_set(): break
+                formats = db.formats(bid)
+                if 'MP3' in formats or 'M4B' in formats:
+                    # We can't do QImage composition in a non-GUI thread reliably.
+                    # But we can return the IDs to the GUI thread.
+                    add_count += 1
+                else:
+                    rem_count += 1
+                if i % 10 == 0:
+                    notifications.put((i/total, f"Scanning book {i} of {total}..."))
+            return add_count, rem_count, book_ids
+
+        db = self.gui.current_db.new_api
+        ids = list(db.all_book_ids())
+        
+        # We'll do the actual drawing back in the GUI thread via the callback
+        job = ThreadedJob('audiobook_sync', 'Syncing Audiobook Icons', sync_worker, 
+                          [db, ids], {}, Dispatcher(self.on_sync_finished))
+        self.gui.job_manager.run_threaded_job(job)
+        self.gui.status_bar.show_message('Audiobook Generator: Started library-wide sync...', 3000)
+
+    def on_sync_finished(self, job):
+        if job.failed:
+            self.gui.status_bar.show_message('Audiobook Generator: Sync failed!', 5000)
+            return
+        
+        add_count, rem_count, ids = job.result
+        db = self.gui.current_db.new_api
+        
+        # Drawing must happen in GUI thread
+        for bid in ids:
+            formats = db.formats(bid)
             if 'MP3' in formats or 'M4B' in formats:
-                self.apply_emblem_to_book(book_id)
-                count += 1
-        self.gui.status_bar.show_message(f'Audiobook Generator: Updated icons for {count} books.', 5000)
+                self.apply_emblem_to_book(bid)
+            else:
+                self.remove_emblem_from_book(bid)
+                
+        self.gui.status_bar.show_message(f'Audiobook Generator: Sync complete ({add_count} icons, {rem_count} cleared).', 10000)
 
     def apply_settings(self):
         pass
