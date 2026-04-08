@@ -8,6 +8,7 @@ prefs = JSONConfig('plugins/audiobook_generator')
 prefs.defaults['language'] = 'English'
 prefs.defaults['tts_engine'] = 'Edge TTS'
 prefs.defaults['voice_gender'] = 'Male'
+prefs.defaults['output_format'] = 'MP3'
 
 class ConfigWidget(QWidget):
     def __init__(self):
@@ -15,7 +16,19 @@ class ConfigWidget(QWidget):
         self.l = QVBoxLayout()
         self.setLayout(self.l)
 
-        # 1. TTS Engine Selection (Top)
+        # 1. Output Format Selection
+        self.h0 = QHBoxLayout()
+        self.l.addLayout(self.h0)
+        self.format_label = QLabel('Output Format:')
+        self.h0.addWidget(self.format_label)
+        self.format_combo = QComboBox(self)
+        self.format_combo.addItems(['MP3', 'M4B'])
+        index = self.format_combo.findText(prefs['output_format'])
+        if index >= 0:
+            self.format_combo.setCurrentIndex(index)
+        self.h0.addWidget(self.format_combo)
+
+        # 2. TTS Engine Selection
         self.h1 = QHBoxLayout()
         self.l.addLayout(self.h1)
         self.engine_label = QLabel('TTS Engine:')
@@ -27,7 +40,7 @@ class ConfigWidget(QWidget):
             self.engine_combo.setCurrentIndex(index)
         self.h1.addWidget(self.engine_combo)
 
-        # 2. Voice Gender Selection
+        # 3. Voice Gender Selection
         self.h2 = QHBoxLayout()
         self.l.addLayout(self.h2)
         self.gender_label = QLabel('Voice Gender (Edge TTS only):')
@@ -39,7 +52,7 @@ class ConfigWidget(QWidget):
             self.gender_combo.setCurrentIndex(index)
         self.h2.addWidget(self.gender_combo)
 
-        # 3. Language Selection
+        # 4. Target Language Selection
         self.h3 = QHBoxLayout()
         self.l.addLayout(self.h3)
         self.label = QLabel('Target Language:')
@@ -51,10 +64,10 @@ class ConfigWidget(QWidget):
             self.language_combo.setCurrentIndex(index)
         self.h3.addWidget(self.language_combo)
         
-        # Add stretch to push everything to the top
         self.l.addStretch(1)
 
     def save_settings(self):
         prefs['language'] = self.language_combo.currentText()
         prefs['tts_engine'] = self.engine_combo.currentText()
         prefs['voice_gender'] = self.gender_combo.currentText()
+        prefs['output_format'] = self.format_combo.currentText()

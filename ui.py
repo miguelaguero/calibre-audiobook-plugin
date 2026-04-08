@@ -1,6 +1,6 @@
 import sys
 import os
-import asyncio
+import time
 
 # Add vendor directory to sys.path
 plugin_path = os.path.dirname(__file__)
@@ -9,23 +9,19 @@ if vendor_path not in sys.path:
     sys.path.insert(0, vendor_path)
 
 from calibre.gui2.actions import InterfaceAction
-from calibre.gui2 import error_dialog, question_dialog, info_dialog
+from calibre.gui2 import error_dialog, question_dialog, info_dialog, Dispatcher
 from calibre_plugins.audiobook_generator.config import prefs
 
 class InterfacePlugin(InterfaceAction):
     name = 'Audiobook Generator'
     
-    # Set icon to None here to set it programmatically in genesis()
     action_spec = ('Audiobook Generator', None, 
                    'Generate audiobooks from ebooks using TTS', None)
 
     def genesis(self):
-        # Programmatically load and set the icon
-        # get_icons() is a builtin that looks into the plugin ZIP
         icon = get_icons('images/icon.png')
         if icon:
             self.qaction.setIcon(icon)
-            
         self.qaction.triggered.connect(self.show_dialog)
 
     def show_dialog(self):
@@ -36,7 +32,7 @@ class InterfacePlugin(InterfaceAction):
         
         if len(ids) > 1:
             return error_dialog(self.gui, 'Multiple books selected', 
-                                'Please select only one book at a time for audiobook generation.', show=True)
+                                'Please select only one book at a time.', show=True)
 
         db = self.gui.current_db
         book_id = ids[0]
@@ -46,13 +42,83 @@ class InterfacePlugin(InterfaceAction):
         language = prefs['language']
         engine = prefs['tts_engine']
         gender = prefs['voice_gender']
+        output_format = prefs['output_format']
 
-        if question_dialog(self.gui, 'Generate Audiobook', 
-                           f'Do you want to generate an MP3 file version of "{title}" using {engine} ({language}, {gender})?'):
-            self.generate_audiobook(book_id, title, language, engine, gender)
+        # Accurate Time Estimation
+        epub_path = db.new_api.format_abspath(book_id, 'EPUB')
+        est_message = ""
+        
+        if epub_path and os.path.exists(epub_path):
+            self.gui.status_bar.show_message("Analyzing book content for estimation...", 2000)
+            try:
+                from calibre.ebooks.oeb.polish.container import get_container
+                from calibre.ebooks.oeb.polish.cover import find_cover_page
+                from bs4 import BeautifulSoup
+                
+                container = get_container(epub_path)
+                cover_page = None
+                try:
+                    cover_page = find_cover_page(container)
+                except:
+                    pass
+                
+                # Correctly handle spine_names (generator of tuples)
+                spine_names = [x[0] if isinstance(x, (list, tuple)) else x for x in container.spine_names]
+                
+                full_text_buf = []
+                for name in spine_names:
+                    if cover_page and name == cover_page:
+                        continue
+                        
+                    mime = container.mime_map.get(name)
+                    if mime in {'text/html', 'application/xhtml+xml'}:
+                        raw = container.raw_data(name)
+                        soup = BeautifulSoup(raw, 'html.parser')
+                        for tag in soup(["script", "style", "img", "image", "svg", "video", "audio", "iframe"]):
+                            tag.decompose()
+                        
+                        text = soup.get_text(separator=' ', strip=True)
+                        if text:
+                            # Match worker logic for introductory "Cover" text
+                            if text.lower().strip() == "cover" and len(text) < 10:
+                                continue
 
-    def generate_audiobook(self, book_id, title, language, engine, gender):
-        from calibre.gui2.dialogs.progress import ProgressDialog
+                            title_tag = soup.find(['h1', 'h2', 'h3'])
+                            title_text = title_tag.get_text().strip() if title_tag else ""
+                            
+                            if title_text:
+                                full_text_buf.append(f"{title_text}\n\n{text}\n\n")
+                            else:
+                                full_text_buf.append(f"{text}\n\n")
+                
+                total_text = "".join(full_text_buf)
+                chunk_size = 5000
+                chunks = [total_text[i:i+chunk_size] for i in range(0, len(total_text), chunk_size)]
+                num_chunks = len(chunks)
+                
+                total_seconds = num_chunks * 7
+                est_minutes = int(total_seconds / 60)
+                
+                if total_seconds < 60:
+                    est_message = f"Estimated time: ~{total_seconds} seconds ({num_chunks} chunks)."
+                else:
+                    est_message = f"Estimated time: ~{est_minutes} minutes ({num_chunks} chunks)."
+            except Exception as e:
+                print(f"Estimation error: {str(e)}")
+                est_message = "Estimation currently unavailable."
+
+        msg = (f'\nDo you want to generate an {output_format} version of "{title}"?\n\n'
+               f'Engine: {engine} ({language}, {gender})\n'
+               f'{est_message}\n\n'
+               'The process runs in the background. You can monitor progress in the "Jobs" spinner.'
+               '\n' + '\n' * 6)
+
+        if question_dialog(self.gui, 'Generate Audiobook', msg):
+            self.start_background_job(book_id, title, language, engine, gender, output_format)
+
+    def start_background_job(self, book_id, title, language, engine, gender, output_format):
+        from calibre.gui2.threaded_jobs import ThreadedJob
+        from calibre_plugins.audiobook_generator.worker import main as worker_main
         
         db = self.gui.current_db.new_api
         epub_path = db.format_abspath(book_id, 'EPUB')
@@ -61,91 +127,61 @@ class InterfacePlugin(InterfaceAction):
             return error_dialog(self.gui, 'No EPUB found', 
                                 'This book does not have an EPUB format available.', show=True)
 
-        # Show progress dialog
-        pd = ProgressDialog('Generating Audiobook...', 
-                            f'Processing "{title}"', 
-                            min=0, max=100, parent=self.gui, cancelable=False)
-        pd.show()
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix='.mp3', delete=False) as tf:
+            temp_mp3 = tf.name
+
+        if engine == 'Edge TTS':
+            voice = ('en-US-GuyNeural' if gender == 'Male' else 'en-US-AriaNeural') if 'English' in language else ('es-MX-JorgeNeural' if gender == 'Male' else 'es-MX-DaliaNeural')
+        else:
+            voice = None
+
+        lang_code = 'en' if 'English' in language else 'es'
+
+        args = [epub_path, temp_mp3, voice, engine, lang_code, vendor_path, book_id, output_format]
         
-        # Update status bar
-        self.gui.status_bar.show_message(f'Audiobook Generator: Extracting text from "{title}"...', 3000)
+        job = ThreadedJob(
+            'audiobook_gen',
+            f'Generating audiobook for "{title}"',
+            worker_main,
+            args,
+            {}, 
+            Dispatcher(self.on_job_finished)
+        )
+
+        self.gui.job_manager.run_threaded_job(job)
+        self.gui.status_bar.show_message(f'Audiobook Generator: Background job started for "{title}"', 3000)
+
+    def on_job_finished(self, job):
+        if job.failed:
+            msg = f'Audiobook Generator: Job failed! Check job details.'
+            self.gui.status_bar.show_message(msg, 10000)
+            return
+
+        try:
+            success, result_data = job.result
+            book_id, output_format, result_val = result_data
+        except:
+            return
+
+        if not success:
+            self.gui.status_bar.show_message(f"Audiobook Generator: FAILED - {result_val}", 10000)
+            return
+
+        temp_mp3 = result_val
         
         try:
-            # 1. Extract text from EPUB
-            pd.value = 10
-            text = self.extract_text(epub_path)
-            if not text:
-                pd.hide()
-                self.gui.status_bar.show_message('Audiobook Generator: Extraction failed.', 5000)
-                return error_dialog(self.gui, 'Extraction Failed', 'Could not extract text from the EPUB.', show=True)
-            
-            # Limit to 5000 chars for now to avoid issues
-            text_to_process = text[:5000]
-            
-            import tempfile
-            with tempfile.NamedTemporaryFile(suffix='.mp3', delete=False) as tf:
-                temp_mp3 = tf.name
-
-            pd.value = 30
-            self.gui.status_bar.show_message(f'Audiobook Generator: Generating audio with {engine} ({gender})...', 5000)
-
-            if engine == 'Edge TTS':
-                # Map gender and language to specific voices
-                if 'English' in language:
-                    voice = 'en-US-GuyNeural' if gender == 'Male' else 'en-US-AriaNeural'
-                else:
-                    voice = 'es-MX-JorgeNeural' if gender == 'Male' else 'es-MX-DaliaNeural'
-                
-                asyncio.run(self.run_edge_tts(text_to_process, voice, temp_mp3))
-            else:
-                # Use gTTS
-                lang_code = 'en' if 'English' in language else 'es'
-                from gtts import gTTS
-                tts = gTTS(text=text_to_process, lang=lang_code)
-                tts.save(temp_mp3)
-            
-            pd.value = 80
-            self.gui.status_bar.show_message('Audiobook Generator: Saving MP3 to library...', 3000)
-
-            # 4. Add the MP3 to the Calibre book
+            db = self.gui.current_db.new_api
             with open(temp_mp3, 'rb') as f:
-                db.add_format(book_id, 'MP3', f, replace=True)
+                db.add_format(book_id, output_format, f, replace=True)
             
             if os.path.exists(temp_mp3):
                 os.remove(temp_mp3)
                 
-            pd.value = 100
-            pd.hide()
-            self.gui.status_bar.show_message(f'Audiobook Generator: Finished "{title}"', 5000)
-            info_dialog(self.gui, 'Success', f'Audiobook (MP3) generated using {engine} ({gender}) and added to "{title}"', show=True)
+            self.gui.status_bar.show_message('Audiobook Generator: SUCCESS - Finished and added to library.', 10000)
             
         except Exception as e:
-            pd.hide()
-            self.gui.status_bar.show_message('Audiobook Generator: Error occurred.', 5000)
-            import traceback
-            print(traceback.format_exc())
-            return error_dialog(self.gui, 'Error', f'An error occurred: {str(e)}', show=True)
-
-    async def run_edge_tts(self, text, voice, output_path):
-        import edge_tts
-        communicate = edge_tts.Communicate(text, voice)
-        await communicate.save(output_path)
-
-    def extract_text(self, epub_path):
-        from calibre.ebooks.oeb.polish.container import get_container
-        from bs4 import BeautifulSoup
-        
-        container = get_container(epub_path)
-        all_text = []
-        for name in container.name_path_map:
-            mime = container.mime_map.get(name)
-            if mime in {'text/html', 'application/xhtml+xml'}:
-                raw = container.raw_data(name)
-                soup = BeautifulSoup(raw, 'html.parser')
-                for script in soup(["script", "style"]):
-                    script.decompose()
-                all_text.append(soup.get_text())
-        return "\n".join(all_text)
+            self.gui.status_bar.show_message(f"Audiobook Generator: Library Error - {str(e)}", 10000)
 
     def apply_settings(self):
         pass
