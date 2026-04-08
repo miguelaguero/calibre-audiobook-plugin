@@ -1,4 +1,4 @@
-from qt.core import QWidget, QHBoxLayout, QLabel, QComboBox, QVBoxLayout
+from qt.core import QWidget, QHBoxLayout, QLabel, QComboBox, QVBoxLayout, QPushButton
 from calibre.utils.config import JSONConfig
 
 # Initialize the config object. 
@@ -11,8 +11,9 @@ prefs.defaults['voice_gender'] = 'Male'
 prefs.defaults['output_format'] = 'MP3'
 
 class ConfigWidget(QWidget):
-    def __init__(self):
+    def __init__(self, plugin_action=None):
         QWidget.__init__(self)
+        self.plugin_action = plugin_action
         self.l = QVBoxLayout()
         self.setLayout(self.l)
 
@@ -64,7 +65,19 @@ class ConfigWidget(QWidget):
             self.language_combo.setCurrentIndex(index)
         self.h3.addWidget(self.language_combo)
         
+        self.l.addSpacing(20)
+        
+        # 5. Sync Button
+        self.sync_button = QPushButton('Sync All Audiobook Icons', self)
+        self.sync_button.setToolTip('Scan entire library for audiobooks and add cassette icons to covers')
+        self.sync_button.clicked.connect(self.run_sync)
+        self.l.addWidget(self.sync_button)
+        
         self.l.addStretch(1)
+
+    def run_sync(self):
+        if self.plugin_action:
+            self.plugin_action.sync_all_icons()
 
     def save_settings(self):
         prefs['language'] = self.language_combo.currentText()
