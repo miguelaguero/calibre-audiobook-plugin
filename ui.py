@@ -77,7 +77,17 @@ class InterfacePlugin(InterfaceAction):
             if l.startswith('en') or l == 'eng':
                 language = 'English'
             elif l.startswith('es') or l == 'spa':
-                language = 'Spanish (Latam)'
+                # Map to Spain if specifically es-es or spa-es, else Latam
+                if l == 'es-es' or l == 'spa-es':
+                    language = 'Spanish (Spain)'
+                else:
+                    language = 'Spanish (Latam)'
+            elif l.startswith('pt') or l == 'por':
+                language = 'Portuguese'
+            elif l.startswith('fr') or l == 'fra' or l == 'fre':
+                language = 'French'
+            elif l.startswith('it') or l == 'ita':
+                language = 'Italian'
 
         engine = prefs['tts_engine']
         gender = prefs['voice_gender']
@@ -134,8 +144,18 @@ class InterfacePlugin(InterfaceAction):
         with tempfile.NamedTemporaryFile(suffix='.mp3', delete=False) as tf:
             temp_mp3 = tf.name
 
-        voice = ('en-US-GuyNeural' if gender == 'Male' else 'en-US-AriaNeural') if 'English' in language else ('es-MX-JorgeNeural' if gender == 'Male' else 'es-MX-DaliaNeural') if engine == 'Edge TTS' else None
-        lang_code = 'en' if 'English' in language else 'es'
+        VOICE_MAPPING = {
+            'English': {'Male': 'en-US-GuyNeural', 'Female': 'en-US-AriaNeural', 'lang': 'en'},
+            'Spanish (Latam)': {'Male': 'es-MX-JorgeNeural', 'Female': 'es-MX-DaliaNeural', 'lang': 'es'},
+            'Spanish (Spain)': {'Male': 'es-ES-AlvaroNeural', 'Female': 'es-ES-ElviraNeural', 'lang': 'es'},
+            'Portuguese': {'Male': 'pt-PT-DuarteNeural', 'Female': 'pt-PT-RaquelNeural', 'lang': 'pt'},
+            'French': {'Male': 'fr-FR-HenriNeural', 'Female': 'fr-FR-DeniseNeural', 'lang': 'fr'},
+            'Italian': {'Male': 'it-IT-DiegoNeural', 'Female': 'it-IT-ElsaNeural', 'lang': 'it'}
+        }
+        
+        mapping = VOICE_MAPPING.get(language, VOICE_MAPPING['English'])
+        voice = mapping[gender] if engine == 'Edge TTS' else None
+        lang_code = mapping['lang']
 
         callback = Dispatcher(self.on_job_finished)
         job = ThreadedJob('audiobook_gen', f'Generating audiobook for "{title}"', worker_main, 

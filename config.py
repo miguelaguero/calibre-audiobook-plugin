@@ -60,7 +60,7 @@ class ConfigWidget(QWidget):
         self.label = QLabel('Target Language:')
         self.h3.addWidget(self.label)
         self.language_combo = QComboBox(self)
-        self.language_combo.addItems(['English', 'Spanish (Latam)'])
+        self.language_combo.addItems(['English', 'Spanish (Latam)', 'Spanish (Spain)', 'Portuguese', 'French', 'Italian'])
         index = self.language_combo.findText(prefs['language'])
         if index >= 0:
             self.language_combo.setCurrentIndex(index)
