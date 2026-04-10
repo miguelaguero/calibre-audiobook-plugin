@@ -21,7 +21,11 @@ A Calibre plugin that generates high-quality audiobooks (MP3) from your ebooks u
 - **Multiple TTS Engines**: 
   - **Edge TTS**: Uses Microsoft Edge's high-quality neural voices (Default).
   - **gTTS**: Google Text-to-Speech fallback.
-- **Language Support**: Support for English and Spanish (Latam).
+- **Expanded Language Support**: Support for English, Spanish (Latam & Spain), Portuguese, French, and Italian.
+- **Smart Language Detection**: Automatically detects book language from metadata (supports 2/3-letter ISO codes).
+- **Flexible Storage Modes**: 
+  - **Internal**: Keeps generated audiobooks inside Calibre's book folders.
+  - **External (Unified)**: Collects all audiobooks into a single folder outside Calibre.
 - **Voice Selection**: Choose between Male and Female neural voices.
 - **Library Integration**: Automatically adds the generated MP3 as a new format to your existing Calibre book entry.
 - **Progress Tracking**: Real-time status updates in Calibre's status bar and a progress dialog.
@@ -65,7 +69,10 @@ You can customize the plugin by going to **Preferences > Advanced > Plugins > Us
 Available settings:
 - **TTS Engine**: Choose between Edge TTS and gTTS.
 - **Voice Gender**: Select Male or Female (primarily for Edge TTS).
-- **Target Language**: Set the language for the speech synthesis.
+- **Target Language**: Set the default language for speech synthesis.
+- **Detect language from book**: Automatically switch TTS language based on book metadata.
+- **Storage Mode**: Toggle between storing in Calibre or a unified external folder.
+- **Unified Folder**: Select the destination for your audiobooks when in External mode.
 
 ## Usage
 
