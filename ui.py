@@ -72,6 +72,13 @@ class InterfacePlugin(InterfaceAction):
         title = mi.title
         
         language = prefs['language']
+        if prefs['detect_language'] and mi.languages:
+            l = mi.languages[0].lower()
+            if l.startswith('en') or l == 'eng':
+                language = 'English'
+            elif l.startswith('es') or l == 'spa':
+                language = 'Spanish (Latam)'
+
         engine = prefs['tts_engine']
         gender = prefs['voice_gender']
         output_format = prefs['output_format']

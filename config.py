@@ -1,4 +1,4 @@
-from qt.core import QWidget, QHBoxLayout, QLabel, QComboBox, QVBoxLayout, QPushButton
+from qt.core import QWidget, QHBoxLayout, QLabel, QComboBox, QVBoxLayout, QPushButton, QCheckBox
 from calibre.utils.config import JSONConfig
 
 # Initialize the config object. 
@@ -9,6 +9,7 @@ prefs.defaults['language'] = 'English'
 prefs.defaults['tts_engine'] = 'Edge TTS'
 prefs.defaults['voice_gender'] = 'Male'
 prefs.defaults['output_format'] = 'MP3'
+prefs.defaults['detect_language'] = False
 
 class ConfigWidget(QWidget):
     def __init__(self, plugin_action=None):
@@ -64,6 +65,14 @@ class ConfigWidget(QWidget):
         if index >= 0:
             self.language_combo.setCurrentIndex(index)
         self.h3.addWidget(self.language_combo)
+
+        # 4b. Detect Language from Book
+        self.h4 = QHBoxLayout()
+        self.l.addLayout(self.h4)
+        self.detect_language_checkbox = QCheckBox('Detect language from book metadata', self)
+        self.detect_language_checkbox.setChecked(prefs['detect_language'])
+        self.detect_language_checkbox.setToolTip('If checked, the plugin will try to use the language defined in the book metadata.')
+        self.h4.addWidget(self.detect_language_checkbox)
         
         self.l.addSpacing(20)
         
@@ -84,3 +93,4 @@ class ConfigWidget(QWidget):
         prefs['tts_engine'] = self.engine_combo.currentText()
         prefs['voice_gender'] = self.gender_combo.currentText()
         prefs['output_format'] = self.format_combo.currentText()
+        prefs['detect_language'] = self.detect_language_checkbox.isChecked()
