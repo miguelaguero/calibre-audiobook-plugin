@@ -181,56 +181,55 @@ class InterfacePlugin(InterfaceAction):
         temp_mp3 = result_val
         try:
             db = self.gui.current_db.new_api
-            with open(temp_mp3, 'rb') as f:
-                db.add_format(book_id, output_format, f, replace=True)
-            if os.path.exists(temp_mp3):
-                os.remove(temp_mp3)
+            storage_mode = prefs.get('storage_mode', 'Internal')
+            unified_path = prefs.get('unified_folder_path', '')
+
+            if storage_mode == 'External' and unified_path and os.path.exists(unified_path):
+                import shutil
+                mi = db.get_metadata(book_id)
+                safe_title = "".join([c for c in mi.title if c.isalnum() or c in (' ', '-', '_')]).strip()
+                safe_author = "".join([c for c in mi.authors[0] if c.isalnum() or c in (' ', '-', '_')]).strip()
+                filename = f"{safe_title} - {safe_author}.{output_format.lower()}"
+                dest_path = os.path.join(unified_path, filename)
+                shutil.move(temp_mp3, dest_path)
+            else:
+                with open(temp_mp3, 'rb') as f:
+                    db.add_format(book_id, output_format, f, replace=True)
+                if os.path.exists(temp_mp3):
+                    os.remove(temp_mp3)
             
             self.apply_emblem_to_book(book_id)
-            self.gui.status_bar.show_message('Audiobook Generator: SUCCESS - Finished and added to library.', 10000)
+            self.gui.status_bar.show_message('Audiobook Generator: SUCCESS - Finished and saved.', 10000)
         except Exception as e:
-            self.gui.status_bar.show_message(f"Audiobook Generator: Library Error - {str(e)}", 10000)
+            self.gui.status_bar.show_message(f"Audiobook Generator: Error - {str(e)}", 10000)
 
-    def apply_emblem_to_book(self, book_id):
-        db = self.gui.current_db.new_api
-        cover_data = db.cover(book_id)
-        if not cover_data: return
-
-        try:
-            rdata = self.load_resources(['images/cassette.png'])
-            emblem_bytes = rdata.get('images/cassette.png')
-            if not emblem_bytes: return
-            emblem = QImage.fromData(emblem_bytes)
-        except: return
-
-        image = QImage.fromData(cover_data)
-        if image.isNull(): return
-
-        painter = QPainter(image)
-        em_size = int(image.width() * 0.20)
-        scaled_emblem = emblem.scaled(em_size, em_size, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-        padding = int(image.width() * 0.02)
-        x = image.width() - scaled_emblem.width() - padding
-        y = padding
-        painter.drawImage(x, y, scaled_emblem)
-        painter.end()
-
-        ba = QBuffer()
-        ba.open(QIODevice.OpenModeFlag.WriteOnly)
-        image.save(ba, "JPG")
-        db.set_cover({book_id: ba.data().data()})
-        
-        self.gui.library_view.model().refresh_ids([book_id])
-        if hasattr(self.gui, 'cover_view'):
-            self.gui.cover_view.refresh_ids([book_id])
-
-    def remove_emblem_from_book(self, book_id):
-        """Attempts to restore original cover from ebook file if audio is missing."""
+    def has_audio_format(self, book_id):
         db = self.gui.current_db.new_api
         formats = db.formats(book_id)
         if 'MP3' in formats or 'M4B' in formats:
+            return True
+        
+        # Check external folder if configured
+        storage_mode = prefs.get('storage_mode', 'Internal')
+        unified_path = prefs.get('unified_folder_path', '')
+        if storage_mode == 'External' and unified_path and os.path.exists(unified_path):
+            mi = db.get_metadata(book_id)
+            safe_title = "".join([c for c in mi.title if c.isalnum() or c in (' ', '-', '_')]).strip()
+            safe_author = "".join([c for c in mi.authors[0] if c.isalnum() or c in (' ', '-', '_')]).strip()
+            for ext in ('mp3', 'm4b'):
+                filename = f"{safe_title} - {safe_author}.{ext}"
+                if os.path.exists(os.path.join(unified_path, filename)):
+                    return True
+        return False
+
+    def remove_emblem_from_book(self, book_id):
+        """Attempts to restore original cover from ebook file if audio is missing."""
+        if self.has_audio_format(book_id):
             return
 
+        db = self.gui.current_db.new_api
+        formats = db.formats(book_id)
+        
         from calibre.ebooks.metadata.meta import get_metadata
         for fmt in formats:
             path = db.format_abspath(book_id, fmt)
@@ -253,16 +252,13 @@ class InterfacePlugin(InterfaceAction):
     def sync_all_icons(self):
         """Runs library sync in a background thread to prevent UI freeze."""
         # Using a ThreadedJob for the sync as well
-        def sync_worker(db, book_ids, notifications, abort, log):
+        def sync_worker(db, book_ids, notifications, abort, log, has_audio_func):
             add_count = 0
             rem_count = 0
             total = len(book_ids)
             for i, bid in enumerate(book_ids):
                 if abort.is_set(): break
-                formats = db.formats(bid)
-                if 'MP3' in formats or 'M4B' in formats:
-                    # We can't do QImage composition in a non-GUI thread reliably.
-                    # But we can return the IDs to the GUI thread.
+                if has_audio_func(bid):
                     add_count += 1
                 else:
                     rem_count += 1
@@ -275,7 +271,7 @@ class InterfacePlugin(InterfaceAction):
         
         # We'll do the actual drawing back in the GUI thread via the callback
         job = ThreadedJob('audiobook_sync', 'Syncing Audiobook Icons', sync_worker, 
-                          [db, ids], {}, Dispatcher(self.on_sync_finished))
+                          [db, ids, self.has_audio_format], {}, Dispatcher(self.on_sync_finished))
         self.gui.job_manager.run_threaded_job(job)
         self.gui.status_bar.show_message('Audiobook Generator: Started library-wide sync...', 3000)
 
@@ -285,12 +281,10 @@ class InterfacePlugin(InterfaceAction):
             return
         
         add_count, rem_count, ids = job.result
-        db = self.gui.current_db.new_api
         
         # Drawing must happen in GUI thread
         for bid in ids:
-            formats = db.formats(bid)
-            if 'MP3' in formats or 'M4B' in formats:
+            if self.has_audio_format(bid):
                 self.apply_emblem_to_book(bid)
             else:
                 self.remove_emblem_from_book(bid)

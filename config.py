@@ -1,4 +1,4 @@
-from qt.core import QWidget, QHBoxLayout, QLabel, QComboBox, QVBoxLayout, QPushButton, QCheckBox
+from qt.core import QWidget, QHBoxLayout, QLabel, QComboBox, QVBoxLayout, QPushButton, QCheckBox, QFileDialog
 from calibre.utils.config import JSONConfig
 
 # Initialize the config object. 
@@ -10,6 +10,8 @@ prefs.defaults['tts_engine'] = 'Edge TTS'
 prefs.defaults['voice_gender'] = 'Male'
 prefs.defaults['output_format'] = 'MP3'
 prefs.defaults['detect_language'] = False
+prefs.defaults['storage_mode'] = 'Internal'
+prefs.defaults['unified_folder_path'] = ''
 
 class ConfigWidget(QWidget):
     def __init__(self, plugin_action=None):
@@ -73,6 +75,31 @@ class ConfigWidget(QWidget):
         self.detect_language_checkbox.setChecked(prefs['detect_language'])
         self.detect_language_checkbox.setToolTip('If checked, the plugin will try to use the language defined in the book metadata.')
         self.h4.addWidget(self.detect_language_checkbox)
+
+        # 4c. Storage Mode
+        self.h5 = QHBoxLayout()
+        self.l.addLayout(self.h5)
+        self.storage_label = QLabel('Storage Mode:')
+        self.h5.addWidget(self.storage_label)
+        self.storage_combo = QComboBox(self)
+        self.storage_combo.addItems(['Internal (Calibre Book Folder)', 'External (Unified Folder)'])
+        stored_mode = 'Internal (Calibre Book Folder)' if prefs['storage_mode'] == 'Internal' else 'External (Unified Folder)'
+        index = self.storage_combo.findText(stored_mode)
+        if index >= 0:
+            self.storage_combo.setCurrentIndex(index)
+        self.h5.addWidget(self.storage_combo)
+
+        # 4d. Unified Folder Path
+        self.h6 = QHBoxLayout()
+        self.l.addLayout(self.h6)
+        self.folder_label = QLabel('Unified Folder:')
+        self.h6.addWidget(self.folder_label)
+        self.folder_edit = QLabel(prefs['unified_folder_path'] or 'Not Selected')
+        self.folder_edit.setFrameStyle(QLabel.Shape.StyledPanel | QLabel.Shadow.Sunken)
+        self.h6.addWidget(self.folder_edit)
+        self.folder_button = QPushButton('Browse...', self)
+        self.folder_button.clicked.connect(self.browse_folder)
+        self.h6.addWidget(self.folder_button)
         
         self.l.addSpacing(20)
         
@@ -84,6 +111,11 @@ class ConfigWidget(QWidget):
         
         self.l.addStretch(1)
 
+    def browse_folder(self):
+        f = QFileDialog.getExistingDirectory(self, 'Select Unified Folder', self.folder_edit.text())
+        if f:
+            self.folder_edit.setText(f)
+
     def run_sync(self):
         if self.plugin_action:
             self.plugin_action.sync_all_icons()
@@ -94,3 +126,5 @@ class ConfigWidget(QWidget):
         prefs['voice_gender'] = self.gender_combo.currentText()
         prefs['output_format'] = self.format_combo.currentText()
         prefs['detect_language'] = self.detect_language_checkbox.isChecked()
+        prefs['storage_mode'] = 'Internal' if 'Internal' in self.storage_combo.currentText() else 'External'
+        prefs['unified_folder_path'] = self.folder_edit.text() if self.folder_edit.text() != 'Not Selected' else ''
