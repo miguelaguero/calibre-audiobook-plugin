@@ -87,6 +87,7 @@ class ConfigWidget(QWidget):
         index = self.storage_combo.findText(stored_mode)
         if index >= 0:
             self.storage_combo.setCurrentIndex(index)
+        self.storage_combo.currentIndexChanged.connect(self.update_storage_ui)
         self.h5.addWidget(self.storage_combo)
 
         # 4d. Unified Folder Path
@@ -100,6 +101,9 @@ class ConfigWidget(QWidget):
         self.folder_button = QPushButton('Browse...', self)
         self.folder_button.clicked.connect(self.browse_folder)
         self.h6.addWidget(self.folder_button)
+
+        # Set initial UI state
+        self.update_storage_ui()
         
         self.l.addSpacing(20)
         
@@ -110,6 +114,12 @@ class ConfigWidget(QWidget):
         self.l.addWidget(self.sync_button)
         
         self.l.addStretch(1)
+
+    def update_storage_ui(self):
+        is_external = 'External' in self.storage_combo.currentText()
+        self.folder_label.setEnabled(is_external)
+        self.folder_edit.setEnabled(is_external)
+        self.folder_button.setEnabled(is_external)
 
     def browse_folder(self):
         f = QFileDialog.getExistingDirectory(self, 'Select Unified Folder', self.folder_edit.text())

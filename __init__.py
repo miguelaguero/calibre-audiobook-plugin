@@ -5,7 +5,7 @@ class AudiobookGeneratorPlugin(InterfaceActionBase):
     description         = 'Generate audiobooks from ebooks using TTS'
     supported_platforms = ['windows', 'osx', 'linux']
     author              = 'Miguel Aguero'
-    version             = (0, 1, 8)
+    version             = (0, 1, 9)
     minimum_calibre_version = (5, 0, 0)
     icon = 'images/icon.png'
 
