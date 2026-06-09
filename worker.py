@@ -6,7 +6,7 @@ import time
 import re
 import unicodedata
 
-def main(epub_path, output_path, voice, engine, lang_code, vendor_path, book_id, output_format, notifications, abort, log):
+def main(epub_path, output_path, voice, engine, lang_code, vendor_path, book_id, output_format, audio_quality, notifications, abort, log):
     """
     Worker function for concurrent audiobook generation using asyncio.
     """
@@ -14,7 +14,15 @@ def main(epub_path, output_path, voice, engine, lang_code, vendor_path, book_id,
         sys.path.insert(0, vendor_path)
 
     try:
-        log(f"Starting conversion for book ID: {book_id}")
+        log(f"Starting conversion for book ID: {book_id} (Quality: {audio_quality})")
+        
+        # Map quality string to Edge TTS format
+        # Note: Microsoft Edge TTS is very picky about formats for neural voices.
+        # Standard: audio-24khz-48kbitrate-mono-mp3 (48kbps)
+        # High: audio-24khz-96kbitrate-mono-mp3 (96kbps)
+        audio_fmt = "audio-24khz-48kbitrate-mono-mp3" 
+        if audio_quality == 'High':
+            audio_fmt = "audio-24khz-96kbitrate-mono-mp3"
         
         # 1. Extract text
         notifications.put((0.05, "Extracting text..."))
@@ -51,10 +59,51 @@ def main(epub_path, output_path, voice, engine, lang_code, vendor_path, book_id,
                         data = b""
                         if engine == 'Edge TTS':
                             import edge_tts
-                            communicate = edge_tts.Communicate(chunk_text, voice)
+                            communicate = edge_tts.Communicate(chunk_text, voice, audio_format=audio_fmt)
                             async for message in communicate.stream():
                                 if message["type"] == "audio":
                                     data += message["data"]
+                        elif engine == 'VibeVoice':
+                            # VibeVoice - Local model (must be installed system-wide), run in executor
+                            def run_vibevoice():
+                                import tempfile
+                                import os
+                                import sys
+                                import torch
+                                
+                                # VibeVoice must be installed system-wide (pip install vibevoice)
+                                # Model must be downloaded to ~/vibevoice_model or specified path
+                                model_path = os.path.expanduser("~/vibevoice_model")
+                                if not os.path.exists(model_path):
+                                    raise Exception("VibeVoice model not found. Run: huggingface-cli download microsoft/VibeVoice-1.5B --local-dir ~/vibevoice_model")
+                                
+                                from transformers import AutoProcessor, AutoModelForCausalLM
+                                processor = AutoProcessor.from_pretrained(model_path)
+                                model = AutoModelForCausalLM.from_pretrained(
+                                    model_path,
+                                    torch_dtype=torch.float16,
+                                    device_map="auto"
+                                )
+                                
+                                model.eval()
+                                inputs = processor(text=chunk_text, return_tensors="pt")
+                                inputs = {k: v.to(model.device) if torch.is_tensor(v) else v for k, v in inputs.items()}
+                                
+                                with torch.no_grad():
+                                    outputs = model.generate(**inputs, max_new_tokens=2048)
+                                
+                                audio_path = processor.save_audio(outputs.speech_outputs[0]) if hasattr(outputs, 'speech_outputs') else processor.decode_audio(outputs)[0]
+                                
+                                with open(audio_path if isinstance(audio_path, str) else tempfile.mktemp(suffix='.wav'), "rb") as rf:
+                                    result = rf.read()
+                                
+                                if os.path.exists(audio_path) and isinstance(audio_path, str):
+                                    os.unlink(audio_path)
+                                
+                                return result
+                            
+                            data = await asyncio.get_event_loop().run_in_executor(None, run_vibevoice)
+                            
                         else:
                             # gTTS - Not natively async, run in executor
                             from gtts import gTTS

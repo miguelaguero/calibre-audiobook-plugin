@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.0] - 2026-04-29
+### Added
+- Microsoft VibeVoice as an additional TTS engine option (local model, requires manual download).
+- Dynamic UI updates: Voice gender and audio quality options are now disabled when VibeVoice or gTTS is selected.
+
 ## [0.1.9] - 2026-04-10
 ### Fixed
 - Improved configuration UI to automatically disable unified folder selection when Internal storage mode is selected.

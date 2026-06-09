@@ -20,6 +20,7 @@ A Calibre plugin that generates high-quality audiobooks (MP3) from your ebooks u
 
 - **Multiple TTS Engines**: 
   - **Edge TTS**: Uses Microsoft Edge's high-quality neural voices (Default).
+  - **VibeVoice**: Microsoft's open-source long-form TTS model (requires local model download).
   - **gTTS**: Google Text-to-Speech fallback.
 - **Expanded Language Support**: Support for English, Spanish (Latam & Spain), Portuguese, French, and Italian.
 - **Smart Language Detection**: Automatically detects book language from metadata (supports 2/3-letter ISO codes).
@@ -91,7 +92,7 @@ Dependencies are tracked in the `Pipfile`.
 ## Credits
 
 - **Author**: Miguel Aguero
-- **Libraries**: [edge-tts](https://github.com/rany2/edge-tts), [gTTS](https://github.com/pndurette/gTTS), [BeautifulSoup4](https://www.crummy.com/software/BeautifulSoup/)
+- **Libraries**: [edge-tts](https://github.com/rany2/edge-tts), [VibeVoice](https://github.com/microsoft/VibeVoice), [gTTS](https://github.com/pndurette/gTTS), [BeautifulSoup4](https://www.crummy.com/software/BeautifulSoup/)
 
 ## License
 

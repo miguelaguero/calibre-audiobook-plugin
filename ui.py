@@ -24,6 +24,11 @@ def get_plugin_instance():
 class InterfacePlugin(InterfaceAction):
     name = 'Audiobook Generator'
     
+    # List of formats that this plugin can "process". 
+    # Adding MP3 here helps Calibre understand that this plugin 
+    # is interested in these formats for actions like "Send to device".
+    supported_formats = ['mp3', 'm4b']
+    
     action_spec = ('Audiobook Generator', None, 
                    'Generate audiobooks from ebooks using TTS', None)
 
@@ -155,11 +160,12 @@ class InterfacePlugin(InterfaceAction):
         
         mapping = VOICE_MAPPING.get(language, VOICE_MAPPING['English'])
         voice = mapping[gender] if engine == 'Edge TTS' else None
-        lang_code = mapping['lang']
+        lang_code = mapping['lang'] if engine != 'VibeVoice' else None
+        audio_quality = prefs.get('audio_quality', 'Low')
 
         callback = Dispatcher(self.on_job_finished)
         job = ThreadedJob('audiobook_gen', f'Generating audiobook for "{title}"', worker_main, 
-                          [epub_path, temp_mp3, voice, engine, lang_code, vendor_path, book_id, output_format], {}, 
+                          [epub_path, temp_mp3, voice, engine, lang_code, vendor_path, book_id, output_format, audio_quality], {}, 
                           callback)
         self.gui.job_manager.run_threaded_job(job)
         self.gui.status_bar.show_message(f'Audiobook Generator: Background job started for "{title}"', 3000)
@@ -293,3 +299,43 @@ class InterfacePlugin(InterfaceAction):
 
     def apply_settings(self):
         pass
+
+    def apply_emblem_to_book(self, book_id):
+        """Adds a cassette emblem to the book cover."""
+        db = self.gui.current_db.new_api
+        cover_data = db.cover(book_id)
+        if not cover_data:
+            return
+            
+        try:
+            img = QImage.fromData(cover_data)
+            if img.isNull():
+                return
+                
+            # Load cassette emblem
+            emblem_path = os.path.join(plugin_path, 'images', 'cassette.png')
+            if not os.path.exists(emblem_path):
+                return
+                
+            emblem = QImage(emblem_path)
+            if emblem.isNull():
+                return
+                
+            # Scale emblem to a fraction of the cover size (e.g., 1/4 width)
+            w = img.width() // 4
+            h = (emblem.height() * w) // emblem.width()
+            emblem = emblem.scaled(w, h, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            
+            # Draw emblem on bottom right
+            painter = QPainter(img)
+            painter.drawImage(img.width() - w - 10, img.height() - h - 10, emblem)
+            painter.end()
+            
+            # Save back to DB
+            ba = QBuffer()
+            ba.open(QIODevice.OpenModeFlag.WriteOnly)
+            img.save(ba, "JPG")
+            db.set_cover({book_id: ba.data()})
+            self.gui.library_view.model().refresh_ids([book_id])
+        except:
+            pass

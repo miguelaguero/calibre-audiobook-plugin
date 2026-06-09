@@ -9,6 +9,7 @@ prefs.defaults['language'] = 'English'
 prefs.defaults['tts_engine'] = 'Edge TTS'
 prefs.defaults['voice_gender'] = 'Male'
 prefs.defaults['output_format'] = 'MP3'
+prefs.defaults['audio_quality'] = 'Standard'
 prefs.defaults['detect_language'] = False
 prefs.defaults['storage_mode'] = 'Internal'
 prefs.defaults['unified_folder_path'] = ''
@@ -32,13 +33,27 @@ class ConfigWidget(QWidget):
             self.format_combo.setCurrentIndex(index)
         self.h0.addWidget(self.format_combo)
 
+        # 1b. Audio Quality (Edge TTS)
+        self.hq = QHBoxLayout()
+        self.l.addLayout(self.hq)
+        self.quality_label = QLabel('Audio Quality (Edge TTS):')
+        self.hq.addWidget(self.quality_label)
+        self.quality_combo = QComboBox(self)
+        self.quality_combo.addItems(['Standard', 'High'])
+        stored_quality = prefs['audio_quality']
+        if stored_quality == 'Low': stored_quality = 'Standard'
+        index = self.quality_combo.findText(stored_quality)
+        if index >= 0:
+            self.quality_combo.setCurrentIndex(index)
+        self.hq.addWidget(self.quality_combo)
+
         # 2. TTS Engine Selection
         self.h1 = QHBoxLayout()
         self.l.addLayout(self.h1)
         self.engine_label = QLabel('TTS Engine:')
         self.h1.addWidget(self.engine_label)
         self.engine_combo = QComboBox(self)
-        self.engine_combo.addItems(['Edge TTS', 'gTTS'])
+        self.engine_combo.addItems(['Edge TTS', 'gTTS', 'VibeVoice'])
         index = self.engine_combo.findText(prefs['tts_engine'])
         if index >= 0:
             self.engine_combo.setCurrentIndex(index)
@@ -55,6 +70,10 @@ class ConfigWidget(QWidget):
         if index >= 0:
             self.gender_combo.setCurrentIndex(index)
         self.h2.addWidget(self.gender_combo)
+        
+        # Update UI based on engine selection
+        self.engine_combo.currentTextChanged.connect(self.update_engine_ui)
+        self.update_engine_ui(self.engine_combo.currentText())
 
         # 4. Target Language Selection
         self.h3 = QHBoxLayout()
@@ -104,6 +123,7 @@ class ConfigWidget(QWidget):
 
         # Set initial UI state
         self.update_storage_ui()
+        self.update_engine_ui(self.engine_combo.currentText())
         
         self.l.addSpacing(20)
         
@@ -120,6 +140,13 @@ class ConfigWidget(QWidget):
         self.folder_label.setEnabled(is_external)
         self.folder_edit.setEnabled(is_external)
         self.folder_button.setEnabled(is_external)
+    
+    def update_engine_ui(self, engine):
+        is_edge = engine == 'Edge TTS'
+        self.gender_label.setEnabled(is_edge)
+        self.gender_combo.setEnabled(is_edge)
+        self.quality_label.setEnabled(is_edge)
+        self.quality_combo.setEnabled(is_edge)
 
     def browse_folder(self):
         f = QFileDialog.getExistingDirectory(self, 'Select Unified Folder', self.folder_edit.text())
@@ -135,6 +162,7 @@ class ConfigWidget(QWidget):
         prefs['tts_engine'] = self.engine_combo.currentText()
         prefs['voice_gender'] = self.gender_combo.currentText()
         prefs['output_format'] = self.format_combo.currentText()
+        prefs['audio_quality'] = self.quality_combo.currentText()
         prefs['detect_language'] = self.detect_language_checkbox.isChecked()
         prefs['storage_mode'] = 'Internal' if 'Internal' in self.storage_combo.currentText() else 'External'
         prefs['unified_folder_path'] = self.folder_edit.text() if self.folder_edit.text() != 'Not Selected' else ''
